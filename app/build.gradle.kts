@@ -68,6 +68,7 @@ kotlin {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -89,12 +90,15 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.mediarouter)
 
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.play.services.cast.framework)
+    implementation(libs.upnpcast)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -1,14 +1,16 @@
 package dev.gitfudge.debbie
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.content.pm.PackageManager
 import android.provider.Settings
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
@@ -62,16 +65,20 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,9 +92,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.fragment.app.FragmentActivity
+import androidx.mediarouter.media.MediaRouter
 import androidx.navigation.NavType
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -95,13 +105,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.google.android.gms.cast.framework.CastContext
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { DebbieApp() }
@@ -596,6 +608,15 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
     val state by vm.state.collectAsState()
     val torrent = state.torrent
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var castMedia by remember { mutableStateOf<CastableMedia?>(null) }
+    var showCastOptions by remember { mutableStateOf(false) }
+    var showCastRoutes by remember { mutableStateOf(false) }
+    var dlnaDevices by remember { mutableStateOf<List<Any>>(emptyList()) }
+    var searchingDlna by remember { mutableStateOf(false) }
+    val nearbyWifiPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        vm.showMessage(if (granted) "Nearby device access granted. Search DLNA devices again." else "Nearby device access is needed for DLNA discovery.")
+    }
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Column(Modifier.fillMaxSize()) {
         // Pinned header: back and refresh stay reachable however far the file list scrolls.
@@ -603,7 +624,14 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
             ScreenHeader(
                 title = "Details",
                 navigation = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
-                action = { IconButton(onClick = { vm.refresh() }) { Icon(Icons.Outlined.Refresh, "Refresh") } },
+                action = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showCastOptions = true }) {
+                            Icon(Icons.Outlined.Cast, "Cast")
+                        }
+                        IconButton(onClick = { vm.refresh() }) { Icon(Icons.Outlined.Refresh, "Refresh") }
+                    }
+                },
             )
         }
         LazyColumn(
@@ -655,7 +683,9 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
                 }
                 if (state.directLinks.isNotEmpty()) {
                     item { SectionHeader("Direct links", "${state.directLinks.size}") }
-                    items(state.directLinks, key = { link -> link.download }) { link -> DownloadRow(link) }
+                    items(state.directLinks, key = { link -> link.download }) { link ->
+                        DownloadRow(link) { media -> castMedia = media }
+                    }
                     if (state.directLinks.size > 1) {
                         item {
                             DebbieOutlinedButton(
@@ -673,6 +703,114 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
             }
         }
         state.message?.let { item { EmptyState("Status", it) } }
+        }
+    }
+    if (showCastRoutes) {
+        CastRoutesSheet(onDismiss = { showCastRoutes = false })
+    }
+    if (showCastOptions || castMedia != null) {
+        val media = castMedia
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = {
+                showCastOptions = false
+                castMedia = null
+                dlnaDevices = emptyList()
+                searchingDlna = false
+            },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            dragHandle = null,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .width(44.dp)
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = .7f)),
+                )
+                Text(if (media == null) "Cast options" else "Cast media", style = MaterialTheme.typography.titleMedium)
+                if (media != null) {
+                    Text(
+                        media.title,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                    )
+                }
+                DebbieButton(
+                    "Chromecast",
+                    {
+                        showCastOptions = false
+                        castMedia = null
+                        showCastRoutes = true
+                    },
+                    Modifier.fillMaxWidth(),
+                )
+                DebbieOutlinedButton(
+                    if (searchingDlna) "Searching DLNA" else "Find DLNA devices",
+                    {
+                        val selectedMedia = media
+                        if (selectedMedia == null) {
+                            vm.showMessage("Choose a media file before using DLNA.")
+                            return@DebbieOutlinedButton
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            nearbyWifiPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+                            return@DebbieOutlinedButton
+                        }
+                        searchingDlna = true
+                        dlnaDevices = emptyList()
+                        scope.launch {
+                            runCatching { searchDlnaDevices(context) }
+                                .onSuccess {
+                                    dlnaDevices = it
+                                    if (it.isEmpty()) vm.showMessage("No DLNA devices found.")
+                                }
+                                .onFailure { vm.showMessage(it.message ?: "Could not search DLNA devices.") }
+                            searchingDlna = false
+                        }
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = !searchingDlna,
+                )
+                dlnaDevices.forEach { device ->
+                    DebbieOutlinedButton(
+                        dlnaDeviceLabel(device),
+                        {
+                            val selectedMedia = media ?: return@DebbieOutlinedButton
+                            scope.launch {
+                                runCatching { castToDlnaDevice(device, selectedMedia) }
+                                    .onSuccess { vm.showMessage(it) }
+                                    .onFailure { vm.showMessage(it.message ?: "Could not start DLNA playback.") }
+                                showCastOptions = false
+                                castMedia = null
+                                dlnaDevices = emptyList()
+                            }
+                        },
+                        Modifier.fillMaxWidth(),
+                    )
+                }
+                DebbieOutlinedButton(
+                    "Close",
+                    {
+                        showCastOptions = false
+                        castMedia = null
+                        dlnaDevices = emptyList()
+                        searchingDlna = false
+                    },
+                    Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }
@@ -784,7 +922,7 @@ fun TorrentFileRow(file: RealDebridTorrentFile) {
 // actions pinned right. Replaces the tall Size/Host KeyValue card so the list
 // reads as a dense instrument readout instead of three cards per screen.
 @Composable
-fun DownloadRow(download: RealDebridDownload) {
+fun DownloadRow(download: RealDebridDownload, onCast: (CastableMedia) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -808,7 +946,7 @@ fun DownloadRow(download: RealDebridDownload) {
                 Text(download.host, fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        DirectLinkActions(download.download)
+        DirectLinkActions(download.download, download.asCastableMedia(), onCast)
     }
 }
 
@@ -854,12 +992,150 @@ fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-fun DirectLinkActions(link: String) {
+fun DirectLinkActions(link: String, castableMedia: CastableMedia?, onCast: (CastableMedia) -> Unit) {
     val context = LocalContext.current
+    val iconTint = MaterialTheme.colorScheme.onSurface
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { copyText(context, link) }) { Icon(Icons.Outlined.ContentCopy, "Copy") }
-        IconButton(onClick = { openUrl(context, link) }) { Icon(Icons.Outlined.OpenInBrowser, "Open") }
+        castableMedia?.let { media ->
+            IconButton(onClick = { onCast(media) }) { Icon(Icons.Outlined.Cast, "Cast", tint = iconTint) }
+        }
+        IconButton(onClick = { copyText(context, link) }) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = iconTint) }
+        IconButton(onClick = { openUrl(context, link) }) { Icon(Icons.Outlined.OpenInBrowser, "Open", tint = iconTint) }
     }
+}
+
+@Composable
+fun CastRoutesSheet(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val router = remember(context) { MediaRouter.getInstance(context.applicationContext) }
+    val selector = remember(context) {
+        runCatching { CastContext.getSharedInstance(context.applicationContext).mergedSelector }.getOrNull()
+    }
+    var routes by remember { mutableStateOf(castRoutes(router, selector)) }
+    val selectedRoute = router.selectedRoute
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    DisposableEffect(router, selector) {
+        if (selector == null) return@DisposableEffect onDispose { }
+        val callback = object : MediaRouter.Callback() {
+            private fun refresh() {
+                routes = castRoutes(router, selector)
+            }
+
+            override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
+            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
+        }
+        router.addCallback(
+            selector,
+            callback,
+            MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN,
+        )
+        routes = castRoutes(router, selector)
+        onDispose { router.removeCallback(callback) }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(44.dp)
+                    .height(3.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = .7f)),
+            )
+            Text("Cast devices", style = MaterialTheme.typography.titleMedium)
+            if (selector == null) {
+                Text("Chromecast is not available right now.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f))
+            } else if (routes.isEmpty()) {
+                Text("Looking for devices.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f))
+            } else {
+                routes.forEach { route ->
+                    CastRouteRow(
+                        route = route,
+                        selected = route.id == selectedRoute.id,
+                        onClick = {
+                            route.select()
+                            onDismiss()
+                        },
+                    )
+                }
+            }
+            if (!selectedRoute.isDefault && !selectedRoute.isBluetooth) {
+                DebbieOutlinedButton(
+                    "Disconnect",
+                    {
+                        router.unselect(MediaRouter.UNSELECT_REASON_DISCONNECTED)
+                        onDismiss()
+                    },
+                    Modifier.fillMaxWidth(),
+                    destructive = true,
+                )
+            }
+            DebbieOutlinedButton("Close", onDismiss, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+fun CastRouteRow(route: MediaRouter.RouteInfo, selected: Boolean, onClick: () -> Unit) {
+    val subtitle = when {
+        selected -> "Connected"
+        route.isConnecting -> "Connecting"
+        route.description != null -> route.description.orEmpty()
+        else -> castDeviceTypeLabel(route.deviceType)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .clickable(enabled = route.isEnabled, onClick = onClick)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Cast, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (route.isEnabled) 1f else .38f))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(route.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+            Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+        }
+        if (selected) Pill("Active", selected = true)
+    }
+}
+
+fun castRoutes(router: MediaRouter, selector: androidx.mediarouter.media.MediaRouteSelector?): List<MediaRouter.RouteInfo> {
+    if (selector == null) return emptyList()
+    return router.routes.filter { route ->
+        route.isEnabled &&
+            !route.isDefault &&
+            !route.isBluetooth &&
+            route.matchesSelector(selector)
+    }
+}
+
+fun castDeviceTypeLabel(deviceType: Int): String = when (deviceType) {
+    MediaRouter.RouteInfo.DEVICE_TYPE_TV -> "TV"
+    MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER,
+    MediaRouter.RouteInfo.DEVICE_TYPE_REMOTE_SPEAKER,
+    -> "Speaker"
+    MediaRouter.RouteInfo.DEVICE_TYPE_AUDIO_VIDEO_RECEIVER -> "Receiver"
+    MediaRouter.RouteInfo.DEVICE_TYPE_COMPUTER -> "Computer"
+    MediaRouter.RouteInfo.DEVICE_TYPE_GAME_CONSOLE -> "Game console"
+    MediaRouter.RouteInfo.DEVICE_TYPE_GROUP -> "Group"
+    else -> "Chromecast device"
 }
 
 @Composable

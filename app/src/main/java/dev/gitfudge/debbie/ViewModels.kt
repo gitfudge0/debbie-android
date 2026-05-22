@@ -243,6 +243,10 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun showMessage(message: String?) {
+        state.value = state.value.copy(message = message)
+    }
+
     fun delete(onDeleted: () -> Unit) = viewModelScope.launch {
         runCatching {
             repository.deleteTorrent(id)

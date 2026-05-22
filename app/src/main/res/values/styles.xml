@@ -1,8 +1,44 @@
 <resources>
-    <style name="Theme.Debbie" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.Debbie" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:windowBackground">#F5F3EF</item>
+        <item name="android:colorBackground">#F5F3EF</item>
+        <item name="colorBackgroundFloating">#F5F3EF</item>
+        <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">#F5F3EF</item>
         <item name="android:statusBarColor">#F5F3EF</item>
+    </style>
+
+    <style name="Theme.Debbie.MediaRouter" parent="Theme.MediaRouter.Light">
+        <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:windowBackground">#F5F3EF</item>
+        <item name="android:colorBackground">#F5F3EF</item>
+        <item name="colorBackgroundFloating">#FFFCF6</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:textColorPrimary">#191713</item>
+        <item name="android:textColorSecondary">#8A8783</item>
+        <item name="colorPrimary">#D94A2B</item>
+        <item name="colorAccent">#D94A2B</item>
+        <item name="colorControlNormal">#191713</item>
+        <item name="colorControlActivated">#D94A2B</item>
+        <item name="mediaRouteButtonTint">#191713</item>
+        <item name="mediaRouteDividerColor">#D9D6D0</item>
+    </style>
+
+    <style name="Theme.Debbie.MediaRouter.Dark" parent="Theme.MediaRouter">
+        <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:windowBackground">#12140F</item>
+        <item name="android:colorBackground">#12140F</item>
+        <item name="colorBackgroundFloating">#1A1D17</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:textColorPrimary">#F2F1EB</item>
+        <item name="android:textColorSecondary">#8F948D</item>
+        <item name="colorPrimary">#FF8C66</item>
+        <item name="colorAccent">#FF8C66</item>
+        <item name="colorControlNormal">#F2F1EB</item>
+        <item name="colorControlActivated">#FF8C66</item>
+        <item name="mediaRouteButtonTint">#F2F1EB</item>
+        <item name="mediaRouteDividerColor">#2B302B</item>
     </style>
 </resources>
