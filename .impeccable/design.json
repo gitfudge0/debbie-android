@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-22T00:00:00Z",
+  "title": "Design System: Debbie",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "primary", "displayName": "Ink", "canonical": "#191713", "tonalRamp": ["#0E0D0A", "#191713", "#2A2721", "#48443C", "#6B665C", "#8A8783", "#B7B4AE", "#ECEAE5"] },
+      "signal": { "role": "accent", "displayName": "Signal Orange", "canonical": "#D94A2B", "tonalRamp": ["#3A140C", "#5E2113", "#8A3019", "#B23A20", "#D94A2B", "#E87354", "#F19C84", "#F8C9BB"] },
+      "sap": { "role": "status", "displayName": "Sap Green", "canonical": "#3A6B3F", "tonalRamp": ["#15281A", "#1F3D24", "#2C522F", "#3A6B3F", "#4F8754", "#74A578", "#9DC4A0", "#CCE0CD"] },
+      "amber": { "role": "status", "displayName": "Signal Amber", "canonical": "#C68A1E", "tonalRamp": ["#3A2807", "#5C400D", "#855E16", "#A8761B", "#C68A1E", "#DBA844", "#E9C57E", "#F2DEB4"] },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#F5F3EF", "tonalRamp": ["#12140F", "#1A1D17", "#2B302B", "#54534D", "#8A8783", "#D9D6D0", "#ECEAE5", "#F5F3EF"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Auth headlines only, hard-wrapped like a prompt. Responsive 24-44sp." },
+      "headline": { "displayName": "Headline", "purpose": "In-app screen titles via ScreenHeader." },
+      "title": { "displayName": "Title", "purpose": "Section and card headers." },
+      "body": { "displayName": "Body", "purpose": "Default working text, data, and short prose. The one body size (14sp)." },
+      "caption": { "displayName": "Caption", "purpose": "Subtitles, secondary metadata, KeyValue labels." },
+      "label": { "displayName": "Label", "purpose": "Uppercased buttons, key names, eyebrows (12sp Bold)." },
+      "micro": { "displayName": "Micro", "purpose": "Stat captions (11sp), pills (10sp), nav labels (9sp). Uppercased." }
+    },
+    "textTiers": [
+      { "name": "primary", "opacity": "100%", "purpose": "Headlines, titles, values, the thing being read." },
+      { "name": "secondary", "opacity": "72%", "purpose": "Supporting body, trailing row values." },
+      { "name": "muted", "opacity": "60%", "purpose": "Captions, key names, subtitles." },
+      { "name": "faint", "opacity": "40%", "purpose": "Disabled content, decorative meta, placeholders, inert chevrons." }
+    ],
+    "shadows": [],
+    "motion": [
+      { "name": "feedback", "value": "120ms ease-out", "purpose": "Instant feedback: pressed tint." },
+      { "name": "state", "value": "180ms ease-out", "purpose": "State transitions: focus ring, selection, color change." },
+      { "name": "skeleton", "value": "900ms ease-in-out reverse loop", "purpose": "The single ambient animation; held static under reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "compactWidth", "value": "380dp", "purpose": "Auth: tightens side padding, mid display step." },
+      { "name": "tightHeight", "value": "660dp", "purpose": "Auth: compresses spacers, steps display headline down." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid Ink fill, paper text, hard square corners. The main commit action. Never Signal-colored.",
+      "html": "<button class=\"ds-btn-primary\">ADD MAGNET</button>",
+      "css": ".ds-btn-primary { background: #191713; color: #F5F3EF; font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 12px; letter-spacing: 0; text-transform: uppercase; padding: 12px 16px; border: none; border-radius: 0; cursor: pointer; transition: background 0.12s ease-out; } .ds-btn-primary:active { background: #2A2721; } .ds-btn-primary:focus-visible { outline: 2px solid #D94A2B; outline-offset: -2px; } .ds-btn-primary:disabled { background: rgba(25,23,19,0.18); color: rgba(25,23,19,0.40); cursor: default; }"
+    },
+    {
+      "name": "Outlined Button",
+      "kind": "button",
+      "refersTo": "button-outlined",
+      "description": "Transparent fill, 1px ink border. Secondary actions; destructive variant uses Signal.",
+      "html": "<button class=\"ds-btn-outlined\">SELECT NONE</button>",
+      "css": ".ds-btn-outlined { background: transparent; color: #191713; font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 12px; text-transform: uppercase; padding: 12px 16px; border: 1px solid rgba(25,23,19,0.8); border-radius: 0; cursor: pointer; transition: background 0.12s ease-out; } .ds-btn-outlined:active { background: rgba(25,23,19,0.08); } .ds-btn-outlined:focus-visible { outline: 2px solid #D94A2B; outline-offset: -2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Outlined, square corners, monospace. Border shifts to Signal on focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"magnet:?xt=urn:btih:...\" />",
+      "css": ".ds-input { background: transparent; color: #191713; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; padding: 12px 16px; border: 1px solid #D9D6D0; border-radius: 0; width: 100%; box-sizing: border-box; transition: border-color 0.18s ease-out; } .ds-input:focus { border-color: #D94A2B; outline: none; } .ds-input::placeholder { color: rgba(25,23,19,0.40); }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "pill",
+      "description": "The one rounded shape (with the progress bar). Tinted background per status hue, always with an uppercased label.",
+      "html": "<span class=\"ds-pill ds-pill-ready\">READY</span>",
+      "css": ".ds-pill { display: inline-block; font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 10px; text-transform: uppercase; padding: 6px 12px; border-radius: 999px; border: 1px solid; } .ds-pill-ready { color: #3A6B3F; background: rgba(58,107,63,0.11); border-color: rgba(217,214,208,0.8); }"
+    },
+    {
+      "name": "Square Toggle",
+      "kind": "custom",
+      "refersTo": "toggle",
+      "description": "Replaces the Material Switch. Square track and thumb; Signal fill when on.",
+      "html": "<button class=\"ds-toggle\" role=\"switch\" aria-checked=\"true\"><span class=\"ds-toggle-thumb\"></span></button>",
+      "css": ".ds-toggle { width: 44px; height: 24px; border: 1px solid #191713; border-radius: 0; background: transparent; padding: 2px; cursor: pointer; transition: background 0.18s ease-out; } .ds-toggle[aria-checked=\"true\"] { background: #D94A2B; } .ds-toggle-thumb { display: block; width: 18px; height: 18px; background: #191713; transition: transform 0.18s ease-out; } .ds-toggle[aria-checked=\"true\"] .ds-toggle-thumb { background: #F5F3EF; transform: translateX(20px); } .ds-toggle:focus-visible { outline: 2px solid #D94A2B; outline-offset: 2px; }"
+    },
+    {
+      "name": "Square Checkbox",
+      "kind": "custom",
+      "refersTo": "checkbox",
+      "description": "Replaces the Material Checkbox. 20px square, Ink fill with a paper check when set.",
+      "html": "<button class=\"ds-check\" role=\"checkbox\" aria-checked=\"true\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"#F5F3EF\" stroke-width=\"3\"><path d=\"M4 12l5 5L20 6\"/></svg></button>",
+      "css": ".ds-check { width: 20px; height: 20px; border: 1px solid #191713; border-radius: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; } .ds-check[aria-checked=\"true\"] { background: #191713; } .ds-check:focus-visible { outline: 2px solid #D94A2B; outline-offset: 2px; }"
+    },
+    {
+      "name": "List Row",
+      "kind": "card",
+      "refersTo": "list-row",
+      "description": "Bone surface, hairline border, 12px padding, clickable. The repeating list unit.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-row-top\"><span class=\"ds-row-title\">ubuntu-24.04.iso</span><span class=\"ds-pill ds-pill-ready\">READY</span></div><div class=\"ds-row-meta\">4.20 GB &nbsp; A1B2C3D4</div></div>",
+      "css": ".ds-row { background: #FFFCF6; border: 1px solid rgba(217,214,208,0.72); border-radius: 0; padding: 12px; cursor: pointer; transition: background 0.12s ease-out; } .ds-row:active { background: rgba(25,23,19,0.08); } .ds-row:focus-visible { outline: 2px solid #D94A2B; outline-offset: -2px; } .ds-row-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; } .ds-row-title { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 14px; color: #191713; } .ds-pill { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 10px; text-transform: uppercase; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(217,214,208,0.8); } .ds-pill-ready { color: #3A6B3F; background: rgba(58,107,63,0.11); } .ds-row-meta { margin-top: 8px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: rgba(25,23,19,0.40); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Bone surface on paper, hairline border at 72%, no shadow, 16px padding. Square corners.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">RECENT TORRENTS</div><div class=\"ds-card-body\">No torrents. Add a magnet or torrent file to begin.</div></div>",
+      "css": ".ds-card { background: #FFFCF6; border: 1px solid rgba(217,214,208,0.72); border-radius: 0; padding: 16px; } .ds-card-title { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 17px; color: #191713; text-transform: uppercase; margin-bottom: 12px; } .ds-card-body { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; line-height: 20px; color: rgba(25,23,19,0.72); }"
+    },
+    {
+      "name": "KeyValue Row",
+      "kind": "custom",
+      "refersTo": "keyvalue",
+      "description": "Caption label left, bold-mono value right. The workhorse for detail data.",
+      "html": "<div class=\"ds-kv\"><span class=\"ds-kv-key\">Size</span><span class=\"ds-kv-val\">4.20 GB</span></div>",
+      "css": ".ds-kv { display: flex; justify-content: space-between; align-items: center; width: 100%; font-family: 'JetBrains Mono', ui-monospace, monospace; } .ds-kv-key { font-size: 13px; color: rgba(25,23,19,0.62); } .ds-kv-val { font-size: 14px; font-weight: 700; color: #191713; }"
+    },
+    {
+      "name": "Progress Bar",
+      "kind": "custom",
+      "refersTo": "progress",
+      "description": "7px fully-rounded track, faint gray with a Signal fill.",
+      "html": "<div class=\"ds-progress\"><div class=\"ds-progress-fill\" style=\"width:62%\"></div></div>",
+      "css": ".ds-progress { width: 100%; height: 7px; background: rgba(217,214,208,0.7); border-radius: 999px; overflow: hidden; } .ds-progress-fill { height: 7px; background: #D94A2B; border-radius: 999px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Instrument",
+    "overview": "Debbie looks like a precision tool, not an app. A multimeter, a label printer, a terminal: one job, a fixed typeface, no opinion about delighting you. Everything is monospace, everything is square-cornered, and surfaces are flat sheets of warm paper separated by hairline rules rather than shadow. There is exactly one loud color, used for warnings, focus, and the current selection, never decoration. Hierarchy is built from weight and four opacity tiers first, size second. This is a deliberate rejection of generic Material 3, torrent-site UI, consumer streaming apps, and SaaS dashboards.",
+    "keyCharacteristics": [
+      "One typeface, JetBrains Mono, for everything including prose.",
+      "Zero corner radius on every container, button, field, and control; pills and the progress bar are the only rounded shapes.",
+      "Flat by default: depth comes from 1px hairlines and warm tonal layering, never shadow.",
+      "A single Signal-orange accent, rationed to one element per screen.",
+      "Warm neutral palette (ink on paper) with a true dark inverse.",
+      "Hierarchy from weight and opacity tiers (100/72/60/40%) first, size second.",
+      "Strict 4dp spacing grid, with 6dp the single named exception."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Signal appears on at most a single conscious element per screen: a focused field, the active progress bar, the current selection, or an error. It is never decorative.", "section": "colors" },
+      { "name": "The Labeled Status Rule", "body": "Sap, Amber, and Signal never communicate alone. Every status hue is bound to an uppercased text label.", "section": "colors" },
+      { "name": "The One Font Rule", "body": "Everything is JetBrains Mono. No prose exception, no display face, no system-sans fallback. Differentiate by weight, opacity tier, or size, not family.", "section": "typography" },
+      { "name": "The Four-Tier Rule", "body": "All text and iconography is Ink at one of exactly four opacities: 100, 72, 60, 40%. Snap to these; do not invent intermediate alphas.", "section": "typography" },
+      { "name": "The Uppercase-Label Rule", "body": "Every micro-label (button, pill, stat caption, nav label, key name) is uppercased to signal 'machine readout.'", "section": "typography" },
+      { "name": "The No-Shadow Rule", "body": "Nothing casts a shadow. To make a surface distinct, lift its tone (Paper to Bone) or outline it with a 1px Faint border.", "section": "elevation" },
+      { "name": "The Hairline Rule", "body": "Structure is drawn at exactly 1px Faint, never thicker, never a colored stripe. Only opacity varies: 72% structure, 55% in-card divider.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do set everything in JetBrains Mono. No exceptions, no second family.",
+      "Do build hierarchy from weight and the four opacity tiers (100/72/60/40%) first, size second.",
+      "Do keep every container, button, field, and control at 0dp radius; reserve 999dp for pills and the progress bar.",
+      "Do pull every spacing value from the 4dp grid (4/8/12/16/20/24/32), with 6dp the single named exception.",
+      "Do draw structure as 1px Faint hairlines at 72% or 55%; selection thickens to Ink, focus is a 2dp Signal ring.",
+      "Do give every clickable a pressed tint (Ink 8%), a focus ring, and a 48dp touch target.",
+      "Do ration Signal to one element per screen.",
+      "Do derive status color and label from the state table; pair every hue with an uppercased label.",
+      "Do write copy that states facts; assume the user knows the domain."
+    ],
+    "donts": [
+      "Don't introduce a second typeface, a system-sans fallback, rounded cards, tonal shadows, dynamic-color purple, or FABs.",
+      "Don't ship stock Material Switch or Checkbox; use DebbieToggle and DebbieCheckbox.",
+      "Don't rely on Material's round ripple on square surfaces; use the flat pressed tint.",
+      "Don't invent intermediate spacing values or text opacities.",
+      "Don't nest containers: no card in a row, no row in a card, never two cards deep.",
+      "Don't make a primary button Signal-colored, or use Signal decoratively.",
+      "Don't hard-wrap dynamic text with literal newlines; ellipsize.",
+      "Don't drift toward torrent-site UI, streaming-app art, or the SaaS dashboard cliché.",
+      "Don't cast a shadow on anything.",
+      "Don't use color as the only carrier of status meaning.",
+      "Don't reach for a modal beyond the add-torrent dialog.",
+      "Don't write persuasive or benefit-led copy."
+    ]
+  }
+}

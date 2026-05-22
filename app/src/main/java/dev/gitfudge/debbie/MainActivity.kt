@@ -1,0 +1,936 @@
+package dev.gitfudge.debbie
+
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Login
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import dagger.hilt.android.AndroidEntryPoint
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { DebbieApp() }
+    }
+}
+
+@Composable
+fun DebbieApp(sessionVm: SessionViewModel = hiltViewModel()) {
+    val session by sessionVm.session.collectAsStateWithLifecycle()
+    val settings by sessionVm.settings.collectAsStateWithLifecycle()
+    DebbieTheme(darkTheme = settings.darkTheme) {
+        DebbieSystemBars(darkTheme = settings.darkTheme)
+        val nav = rememberNavController()
+        val backStackEntry by nav.currentBackStackEntryAsState()
+        val currentRoute = backStackEntry?.destination?.route
+        LaunchedEffect(session, currentRoute) {
+            when {
+                session != null && currentRoute in setOf("welcome", "login") -> nav.navigate("dashboard") { popUpTo(0) }
+                session == null && currentRoute != null && currentRoute !in setOf("welcome", "login") -> nav.navigate("welcome") { popUpTo(0) }
+            }
+        }
+        NavHost(navController = nav, startDestination = if (session == null) "welcome" else "dashboard") {
+            composable("welcome") {
+                WelcomeScreen(
+                    darkTheme = settings.darkTheme,
+                    onToggleTheme = { sessionVm.setDarkTheme(!settings.darkTheme) },
+                    onSignIn = { nav.navigate("login") },
+                )
+            }
+            composable("login") { LoginScreen() }
+            composable("dashboard") {
+                DashboardScreen(
+                    openDetail = { nav.navigate("torrent/${it}") },
+                    openAccount = { nav.navigate("account") },
+                )
+            }
+            composable("account") { AccountScreen(settings = settings, back = { nav.popBackStack() }) }
+            composable("torrent/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
+                DetailScreen(back = { nav.popBackStack() })
+            }
+        }
+    }
+}
+
+@Composable
+@Suppress("DEPRECATION")
+fun DebbieSystemBars(darkTheme: Boolean) {
+    val view = LocalView.current
+    val color = MaterialTheme.colorScheme.background.toArgb()
+    SideEffect {
+        val window = (view.context as Activity).window
+        window.statusBarColor = color
+        window.navigationBarColor = color
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !darkTheme
+            isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+}
+
+@Composable
+fun WelcomeScreen(darkTheme: Boolean, onToggleTheme: () -> Unit, onSignIn: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val tightHeight = maxHeight < 660.dp
+        val compactWidth = maxWidth < 380.dp
+        val sidePadding = if (compactWidth) 20.dp else 24.dp
+        val headlineSize = when {
+            tightHeight -> 31.sp
+            compactWidth -> 39.sp
+            else -> 44.sp
+        }
+        val headlineLine = when {
+            tightHeight -> 35.sp
+            compactWidth -> 43.sp
+            else -> 48.sp
+        }
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(start = sidePadding, end = sidePadding, bottom = if (tightHeight) 20.dp else 28.dp),
+        ) {
+            Spacer(Modifier.height(if (tightHeight) 18.dp else 72.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                LoginBrand()
+                LoginThemeToggle(darkTheme = darkTheme, onToggle = onToggleTheme)
+            }
+            Spacer(Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(if (tightHeight) 14.dp else 18.dp)) {
+                Box(
+                    Modifier
+                        .size(if (tightHeight) 48.dp else 56.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(0.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.AutoAwesome, "Debbie", modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+                }
+                Text(
+                    "Real-Debrid,\nkept tidy.",
+                    style = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontFamily = JetBrainsMono,
+                        fontSize = headlineSize,
+                        lineHeight = headlineLine,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                    "Debbie helps you add torrents, watch active transfers, and open ready downloads without digging through the Real-Debrid site.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                    fontFamily = JetBrainsMono,
+                    fontSize = if (tightHeight) 13.sp else 15.sp,
+                    lineHeight = if (tightHeight) 19.sp else 24.sp,
+                )
+            }
+            Spacer(Modifier.height(if (tightHeight) 18.dp else 28.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WelcomePoint("Add magnet links and torrent files")
+                WelcomePoint("Track active, ready, and stuck transfers")
+                WelcomePoint("Keep tokens private on this device")
+            }
+            Spacer(Modifier.height(if (tightHeight) 16.dp else 24.dp))
+            LoginPrimaryButton(text = "SIGN IN", onClick = onSignIn, enabled = true)
+        }
+    }
+}
+
+@Composable
+fun WelcomePoint(text: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.onSurface))
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+            fontFamily = JetBrainsMono,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+        )
+    }
+}
+
+private fun screenPadding(scaffoldPadding: PaddingValues = PaddingValues(0.dp)) = PaddingValues(
+    start = 20.dp,
+    top = scaffoldPadding.calculateTopPadding() + 24.dp,
+    end = 20.dp,
+    bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
+)
+
+@Composable
+fun ScreenHeader(title: String, subtitle: String? = null, navigation: (@Composable () -> Unit)? = null, action: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        navigation?.let {
+            Box(contentAlignment = Alignment.Center) { it() }
+            Spacer(Modifier.width(8.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            subtitle?.let {
+                Text(it, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f), fontSize = 13.sp)
+            }
+            Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        action?.let {
+            Spacer(Modifier.width(12.dp))
+            Box(contentAlignment = Alignment.Center) { it() }
+        }
+    }
+}
+
+@Composable
+fun LoginScreen(vm: LoginViewModel = hiltViewModel()) {
+    val state by vm.state.collectAsState()
+    val darkTheme by vm.darkTheme.collectAsStateWithLifecycle()
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val tightHeight = maxHeight < 660.dp
+        val compactWidth = maxWidth < 380.dp
+        val sidePadding = if (compactWidth) 20.dp else 24.dp
+        val headerDrop = when {
+            tightHeight -> 18.dp
+            compactWidth -> 56.dp
+            else -> 72.dp
+        }
+        val headlineSize = when {
+            tightHeight -> 24.sp
+            compactWidth -> 31.sp
+            else -> 34.sp
+        }
+        val headlineLine = when {
+            tightHeight -> 28.sp
+            compactWidth -> 36.sp
+            else -> 39.sp
+        }
+        val bodySize = if (tightHeight) 12.sp else 15.sp
+        val bodyLine = if (tightHeight) 17.sp else 24.sp
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(start = sidePadding, end = sidePadding, bottom = if (tightHeight) 20.dp else 28.dp),
+        ) {
+            Spacer(Modifier.height(headerDrop))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                LoginBrand()
+                LoginThemeToggle(darkTheme = darkTheme, onToggle = { vm.setDarkTheme(!darkTheme) })
+            }
+            Spacer(Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(if (tightHeight) 12.dp else 16.dp)) {
+                Text(
+                    "Sign in.\nWe stay out\nof your way.",
+                    style = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontFamily = JetBrainsMono,
+                        fontSize = headlineSize,
+                        lineHeight = headlineLine,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                    "Pick OAuth for a scoped device login, or paste a private API token. Debbie stores the bearer token in encrypted storage.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                    fontFamily = JetBrainsMono,
+                    fontSize = bodySize,
+                    lineHeight = bodyLine,
+                )
+            }
+            Spacer(Modifier.height(if (tightHeight) 12.dp else 24.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LoginModeCard(
+                    title = "OAuth",
+                    subtitle = "Device code",
+                    selected = state.mode == LoginMode.OAuth,
+                    onClick = { vm.setMode(LoginMode.OAuth) },
+                    modifier = Modifier.weight(1f),
+                )
+                LoginModeCard(
+                    title = "API key",
+                    subtitle = "Private token",
+                    selected = state.mode == LoginMode.ApiKey,
+                    onClick = { vm.setMode(LoginMode.ApiKey) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (state.mode == LoginMode.ApiKey) {
+                Spacer(Modifier.height(12.dp))
+                LoginApiKeyInput(state.apiKey, vm::setApiKey)
+            }
+            state.device?.let { device ->
+                Spacer(Modifier.height(12.dp))
+                LoginNotice {
+                    KeyValue("Code", device.userCode)
+                    Text(device.verificationUrl, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(if (tightHeight) 10.dp else 16.dp))
+            LoginPrimaryButton(
+                text = when {
+                    tightHeight && state.mode == LoginMode.OAuth -> "CONTINUE"
+                    tightHeight -> "CONNECT"
+                    state.mode == LoginMode.OAuth -> "CONTINUE WITH REAL-DEBRID"
+                    else -> "CONNECT WITH API KEY"
+                },
+                onClick = { if (state.mode == LoginMode.OAuth) vm.startDeviceLogin() else vm.loginWithApiKey() },
+                enabled = !state.busy && (state.mode == LoginMode.OAuth || state.apiKey.isNotBlank()),
+            )
+            if (!tightHeight) {
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "PREMIUM SUBSCRIPTION REQUIRED",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (compactWidth) 11.sp else 12.sp,
+                )
+            }
+            state.message?.let {
+                Spacer(Modifier.height(12.dp))
+                LoginNotice { Text(it, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun LoginBrand() {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(15.dp).height(15.dp).background(MaterialTheme.colorScheme.onSurface))
+        Text("debbie", fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    }
+}
+
+@Composable
+fun LoginThemeToggle(darkTheme: Boolean, onToggle: () -> Unit) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (darkTheme) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
+            if (darkTheme) "Switch to light theme" else "Switch to dark theme",
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+@Composable
+fun LoginModeCard(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val border = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = .72f)
+    Column(
+        modifier
+            .border(1.dp, border, RoundedCornerShape(0.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(title, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+        Text(subtitle, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f), fontFamily = JetBrainsMono, fontSize = 12.sp, lineHeight = 16.sp)
+    }
+}
+
+@Composable
+fun LoginApiKeyInput(value: String, onValueChange: (String) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(0.dp))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Private API token",
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+        )
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = JetBrainsMono,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+            decorationBox = { innerTextField ->
+                Box(Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            "Paste token",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .4f),
+                            fontFamily = JetBrainsMono,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+fun LoginPrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else .42f)
+            .background(MaterialTheme.colorScheme.onSurface)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Login, text, tint = MaterialTheme.colorScheme.background, modifier = Modifier.width(22.dp).height(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(text, color = MaterialTheme.colorScheme.background, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+    }
+}
+
+@Composable
+fun LoginNotice(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+@Composable
+fun DashboardScreen(openDetail: (String) -> Unit, openAccount: () -> Unit, vm: DashboardViewModel = hiltViewModel()) {
+    val state by vm.state.collectAsState()
+    val torrents = state.torrents
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(vm::addTorrentFile) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(WindowInsets.systemBars.asPaddingValues()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            ScreenHeader(
+                title = "Welcome, ${state.user?.username ?: "back"}",
+                subtitle = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { vm.showAdd(true) }) { Icon(Icons.Outlined.Add, "Add") }
+                    IconButton(onClick = openAccount) { Icon(Icons.Outlined.AccountCircle, "Account") }
+                }
+            }
+        }
+        state.message?.let { item { HomeEmptyState("Notice", it) } }
+        item { Text("Recent torrents", style = MaterialTheme.typography.titleMedium) }
+        if (torrents.isEmpty()) {
+            if (state.loading) items(4) { TorrentSkeletonRow(home = true) }
+            else item { HomeEmptyState("No torrents", state.error ?: "Add a magnet or torrent file to begin.") }
+        }
+        items(torrents, key = { it.id }) { torrent ->
+            HomeTorrentRow(torrent, onClick = { openDetail(torrent.id) })
+        }
+    }
+    if (state.showAdd) {
+        AlertDialog(
+            onDismissRequest = { vm.showAdd(false) },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(0.dp),
+            title = { Text("Add torrent") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DebbieInput(state.magnet, vm::setMagnet, "Magnet link", singleLine = false)
+                    DebbieButton("Upload .torrent", onClick = { picker.launch("application/x-bittorrent") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton(onClick = vm::addMagnet, enabled = validateMagnet(state.magnet)) { Text("Add") } },
+            dismissButton = { TextButton(onClick = { vm.showAdd(false) }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+fun HomeEmptyState(title: String, body: String) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(body, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f))
+    }
+}
+
+@Composable
+fun HomeTorrentRow(torrent: RealDebridTorrent, onClick: () -> Unit) {
+    val tone = statusTone(torrent.status)
+    val motionEnabled = rememberMotionEnabled()
+    var visible by remember(torrent.id) { mutableStateOf(!motionEnabled) }
+    LaunchedEffect(torrent.id, motionEnabled) {
+        if (motionEnabled) visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 10 },
+        exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 10 },
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+                .clickable(onClick = onClick)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Text(torrent.filename, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold, lineHeight = 20.sp)
+                Pill(statusLabel(torrent.status), tone)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(fmtSize(torrent.bytes), fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+                Text(shortHash(torrent.hash), modifier = Modifier.weight(1f), fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .4f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Outlined.ChevronRight, "Open", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .4f), modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
+    val state by vm.state.collectAsState()
+    val torrent = state.torrent
+    val context = LocalContext.current
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Column(Modifier.fillMaxSize()) {
+        // Pinned header: back and refresh stay reachable however far the file list scrolls.
+        Box(Modifier.padding(start = 20.dp, end = 20.dp, top = topInset + 24.dp, bottom = 12.dp)) {
+            ScreenHeader(
+                title = "Details",
+                navigation = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+                action = { IconButton(onClick = { vm.refresh() }) { Icon(Icons.Outlined.Refresh, "Refresh") } },
+            )
+        }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+        torrent?.let {
+            item { TorrentStatusBlock(it) }
+            if (isNeedsAction(it.status)) {
+                item {
+                    DebbieCard {
+                        Text("Select files", fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DebbieButton("All", vm::selectAll, Modifier.weight(1f))
+                            DebbieButton("None", vm::selectNone, Modifier.weight(1f))
+                        }
+                        DebbieButton("Start torrent", vm::submitFileSelection, Modifier.fillMaxWidth(), state.selectedFiles.isNotEmpty())
+                    }
+                }
+                items(it.files, key = { file -> file.id }) { file ->
+                    DebbieCard {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            DebbieCheckbox(checked = file.id in state.selectedFiles, onCheckedChange = { vm.toggleFile(file.id) }, accent = MaterialTheme.colorScheme.primary)
+                            Column(Modifier.weight(1f)) {
+                                Text(file.path, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(fmtSize(file.bytes), fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+                            }
+                        }
+                    }
+                }
+                item {
+                    DebbieOutlinedButton("Delete torrent", { vm.delete(back) }, Modifier.fillMaxWidth(), destructive = true)
+                }
+            } else {
+                // Working path first: detail, then the generate/grab actions and the
+                // links they produce. The file list is reference, so it sits last.
+                item { TorrentDetailsCard(it) }
+                item {
+                    DebbieCard {
+                        DebbieButton(
+                            if (state.generating) "Generating" else "Generate direct links",
+                            vm::generateLinks,
+                            Modifier.fillMaxWidth(),
+                            enabled = it.links.isNotEmpty() && !state.generating,
+                        )
+                        DebbieOutlinedButton("Delete torrent", { vm.delete(back) }, Modifier.fillMaxWidth(), destructive = true)
+                    }
+                }
+                if (state.directLinks.isNotEmpty()) {
+                    item { SectionHeader("Direct links", "${state.directLinks.size}") }
+                    items(state.directLinks, key = { link -> link.download }) { link -> DownloadRow(link) }
+                    if (state.directLinks.size > 1) {
+                        item {
+                            DebbieOutlinedButton(
+                                "Copy all links",
+                                { copyText(context, state.directLinks.joinToString("\n") { link -> link.download }) },
+                                Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+                if (it.files.isNotEmpty()) {
+                    item { SectionHeader("Files", "${it.files.count { f -> f.selected == 1 }}/${it.files.size}") }
+                    items(it.files, key = { file -> file.id }) { file -> TorrentFileRow(file) }
+                }
+            }
+        }
+        state.message?.let { item { EmptyState("Status", it) } }
+        }
+    }
+}
+
+// Compact status: a bare pill once settled (Ready/Error/Queued); pill + percent +
+// progress bar + a speed · eta · seeders meta line only while actively transferring.
+// Replaces the tall status card so a finished torrent reads as one line, not a block.
+@Composable
+fun TorrentStatusBlock(t: RealDebridTorrentInfo) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Pill(statusLabel(t.status), statusTone(t.status))
+            if (isActive(t.status)) {
+                Text(
+                    "${t.progress.toInt()}%",
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                )
+            }
+        }
+        if (isActive(t.status)) {
+            ProgressBar(t.progress / 100.0)
+            val meta = buildList {
+                t.speed?.takeIf { it > 0 }?.let { speed ->
+                    add(fmtSpeed(speed))
+                    add(fmtEta(t.bytes, t.progress / 100.0, speed))
+                }
+                t.seeders?.let { add("$it seeders") }
+            }
+            if (meta.isNotEmpty()) {
+                Text(
+                    meta.joinToString("  ·  "),
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TorrentDetailsCard(t: RealDebridTorrentInfo) {
+    DebbieCard {
+        Text(
+            t.filename,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
+        )
+        KeyValue("Size", fmtSize(t.bytes))
+        KeyValue("Added", fmtDate(t.added))
+        t.ended?.let { KeyValue("Completed", fmtDate(it)) }
+        t.seeders?.let { KeyValue("Seeders", it.toString()) }
+        KeyValue("Hash", shortHash(t.hash))
+    }
+}
+
+// Section divider for the detail screen's list groups (Files, Direct links): a Title
+// heading with a muted mono count pushed right. One header shape for both groups.
+@Composable
+fun SectionHeader(title: String, trailing: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            trailing,
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+        )
+    }
+}
+
+// Read-only file row for a fetched torrent: name + size, unselected files dimmed to Faint.
+@Composable
+fun TorrentFileRow(file: RealDebridTorrentFile) {
+    val selected = file.selected == 1
+    val nameAlpha = if (selected) 1f else .4f
+    val sizeAlpha = if (selected) .72f else .4f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            file.path.substringAfterLast('/'),
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = nameAlpha),
+        )
+        Text(
+            fmtSize(file.bytes),
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = sizeAlpha),
+        )
+    }
+}
+
+// Compact download row: filename over a size · host meta line, with copy/open
+// actions pinned right. Replaces the tall Size/Host KeyValue card so the list
+// reads as a dense instrument readout instead of three cards per screen.
+@Composable
+fun DownloadRow(download: RealDebridDownload) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                download.filename,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 20.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(fmtSize(download.filesize), fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f))
+                Text("·", fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .4f))
+                Text(download.host, fontFamily = JetBrainsMono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        DirectLinkActions(download.download)
+    }
+}
+
+@Composable
+fun AccountScreen(settings: AppSettings, back: () -> Unit, vm: AccountViewModel = hiltViewModel()) {
+    val state by vm.state.collectAsState()
+    val user = state.user
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(WindowInsets.systemBars.asPaddingValues()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            ScreenHeader(
+                "Account",
+                navigation = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+            )
+        }
+        item {
+            DebbieCard {
+                Text(user?.username ?: "Real-Debrid", fontWeight = FontWeight.Bold)
+                KeyValue("Member id", user?.id?.toString() ?: "-")
+                KeyValue("Type", user?.type ?: "-")
+                KeyValue("Points", user?.points?.toString() ?: "0")
+                KeyValue("Premium", "${premiumDaysLeft(user?.expiration)} days")
+                KeyValue("Traffic", "0 GB of 2000 GB")
+            }
+        }
+        item {
+            DebbieCard {
+                ToggleRow("Dark theme", settings.darkTheme, vm::setDarkTheme)
+                ToggleRow("Auto-unrestrict", settings.autoUnrestrict, vm::setAutoUnrestrict)
+                OpenButton("Real-Debrid", "https://real-debrid.com/")
+                DebbieButton("Disconnect", vm::disconnect, Modifier.fillMaxWidth())
+            }
+        }
+        state.message?.let { item { EmptyState("Status", it) } }
+    }
+}
+
+@Composable
+fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label)
+        DebbieToggle(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
+fun DirectLinkActions(link: String) {
+    val context = LocalContext.current
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { copyText(context, link) }) { Icon(Icons.Outlined.ContentCopy, "Copy") }
+        IconButton(onClick = { openUrl(context, link) }) { Icon(Icons.Outlined.OpenInBrowser, "Open") }
+    }
+}
+
+@Composable
+fun OpenButton(label: String, url: String) {
+    val context = LocalContext.current
+    DebbieButton(label, { openUrl(context, url) }, Modifier.fillMaxWidth())
+}
+
+fun copyText(context: Context, value: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Debbie link", value))
+}
+
+fun openUrl(context: Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
+
+@Composable
+fun SkeletonBlock(modifier: Modifier = Modifier, pulse: Float) {
+    Box(
+        modifier
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = .08f + .08f * pulse)),
+    )
+}
+
+@Composable
+private fun rememberSkeletonPulse(): Float {
+    if (!rememberMotionEnabled()) return 0f
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val pulse by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "pulse",
+    )
+    return pulse
+}
+
+@Composable
+private fun rememberMotionEnabled(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) > 0f
+    }
+}
+
+@Composable
+fun TorrentSkeletonRow(home: Boolean) {
+    val pulse = rememberSkeletonPulse()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .72f), RoundedCornerShape(0.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SkeletonBlock(Modifier.weight(1f).height(16.dp), pulse)
+            SkeletonBlock(Modifier.width(56.dp).height(16.dp), pulse)
+        }
+        SkeletonBlock(Modifier.fillMaxWidth(.7f).height(12.dp), pulse)
+        if (!home) SkeletonBlock(Modifier.fillMaxWidth().height(6.dp), pulse)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SkeletonBlock(Modifier.width(64.dp).height(12.dp), pulse)
+            SkeletonBlock(Modifier.weight(1f).height(12.dp), pulse)
+            SkeletonBlock(Modifier.width(20.dp).height(12.dp), pulse)
+        }
+    }
+}

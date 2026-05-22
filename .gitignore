@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+
+# Generated review artifacts
+api-key-input-style.png
+device-current-screen.png
+redesigned-login-screen.png
+responsive-login-720x1600.png
+responsive-login-screen.png
