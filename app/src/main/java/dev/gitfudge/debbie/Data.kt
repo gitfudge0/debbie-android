@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -220,7 +221,14 @@ interface RealDebridApi {
     @FormUrlEncoded
     @POST("unrestrict/link")
     suspend fun unrestrictLink(@Header("Authorization") auth: String, @Field("link") link: String): RealDebridUnrestrictedLink
+
+    @GET("streaming/transcode/{id}")
+    suspend fun transcode(@Header("Authorization") auth: String, @Path("id") id: String): kotlinx.serialization.json.JsonObject
 }
+
+// A lower-bitrate playback URL from Real-Debrid's transcoder, plus the content type to
+// announce when casting it. Far lighter than streaming a raw 4K original to a renderer.
+data class StreamLink(val url: String, val contentType: String)
 
 interface RealDebridOAuthApi {
     @GET("device/code")
@@ -436,6 +444,30 @@ class DebbieRepository @Inject constructor(
             }
         }
         return generated.filter { it.download.isNotBlank() }.distinctBy { it.download }
+    }
+
+    // Ask Real-Debrid to transcode a file id and return a progressive MP4 URL capped at a
+    // sane resolution, so casting a 4K original doesn't peg the renderer's bandwidth. Prefer
+    // progressive MP4 (plays on both Chromecast and DLNA); HLS/DASH are last resorts.
+    suspend fun streamLink(id: String): StreamLink? {
+        val transcode = api.transcode(requireSession().authHeader(), id)
+        val mp4 = (transcode["liveMP4"] as? kotlinx.serialization.json.JsonObject)?.let { pickQuality(it) }
+        if (mp4 != null) return StreamLink(mp4, "video/mp4")
+        val webm = (transcode["h264WebM"] as? kotlinx.serialization.json.JsonObject)?.let { pickQuality(it) }
+        if (webm != null) return StreamLink(webm, "video/webm")
+        val hls = (transcode["apple"] as? kotlinx.serialization.json.JsonObject)?.let { pickQuality(it) }
+        if (hls != null) return StreamLink(hls, "application/x-mpegURL")
+        return null
+    }
+
+    // Prefer a capped resolution (lighter = less buffering) over the full-res transcode.
+    private fun pickQuality(format: kotlinx.serialization.json.JsonObject): String? {
+        fun urlAt(key: String) = (format[key] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.contentOrNull?.takeIf { it.isNotBlank() && it.startsWith("http") }
+        listOf("1080p", "720p", "480p", "full").forEach { urlAt(it)?.let { url -> return url } }
+        return format.values.firstNotNullOfOrNull {
+            (it as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.takeIf { url -> url.startsWith("http") }
+        }
     }
 
     private suspend fun requireSession(): AuthSession = auth.refreshIfNeeded() ?: throw IllegalStateException("Reconnect to Real-Debrid.")

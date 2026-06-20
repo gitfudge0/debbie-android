@@ -19,7 +19,6 @@ kotlinxSerialization = "1.7.3"
 securityCrypto = "1.1.0-alpha06"
 playServicesCast = "22.3.1"
 mediaRouter = "1.8.1"
-upnpCast = "1.1.2"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
 
@@ -52,7 +51,6 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "playServicesCast" }
-upnpcast = { group = "com.yinnho.upnpcast", name = "upnpcast", version.ref = "upnpCast" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 

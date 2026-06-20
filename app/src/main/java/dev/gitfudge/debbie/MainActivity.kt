@@ -61,6 +61,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -106,6 +107,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.SessionManagerListener
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -612,7 +615,35 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
     var castMedia by remember { mutableStateOf<CastableMedia?>(null) }
     var showCastOptions by remember { mutableStateOf(false) }
     var showCastRoutes by remember { mutableStateOf(false) }
-    var dlnaDevices by remember { mutableStateOf<List<Any>>(emptyList()) }
+    var castRoutesMedia by remember { mutableStateOf<CastableMedia?>(null) }
+    // Media waiting for a Chromecast session to connect. The route sheet is dismissed
+    // the instant a device is tapped, so the load must be driven from here (which stays
+    // composed) — not from inside the sheet, whose listener would be torn down first.
+    var pendingCastMedia by remember { mutableStateOf<CastableMedia?>(null) }
+    DisposableEffect(context) {
+        val sessionManager = runCatching {
+            CastContext.getSharedInstance(context.applicationContext).sessionManager
+        }.getOrNull() ?: return@DisposableEffect onDispose { }
+        fun loadPending() {
+            val media = pendingCastMedia ?: return
+            pendingCastMedia = null
+            vm.showMessage(castToChromecast(context, media))
+        }
+        val listener = object : SessionManagerListener<CastSession> {
+            override fun onSessionStarted(session: CastSession, sessionId: String) = loadPending()
+            override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = loadPending()
+            override fun onSessionStarting(session: CastSession) {}
+            override fun onSessionStartFailed(session: CastSession, error: Int) {}
+            override fun onSessionEnding(session: CastSession) {}
+            override fun onSessionEnded(session: CastSession, error: Int) {}
+            override fun onSessionResuming(session: CastSession, sessionId: String) {}
+            override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+            override fun onSessionSuspended(session: CastSession, reason: Int) {}
+        }
+        sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+        onDispose { sessionManager.removeSessionManagerListener(listener, CastSession::class.java) }
+    }
+    var dlnaDevices by remember { mutableStateOf<List<DlnaDevice>>(emptyList()) }
     var searchingDlna by remember { mutableStateOf(false) }
     val nearbyWifiPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         vm.showMessage(if (granted) "Nearby device access granted. Search DLNA devices again." else "Nearby device access is needed for DLNA discovery.")
@@ -706,10 +737,25 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
         }
     }
     if (showCastRoutes) {
-        CastRoutesSheet(onDismiss = { showCastRoutes = false })
+        CastRoutesSheet(
+            media = castRoutesMedia,
+            onStatus = { vm.showMessage(it) },
+            onCastWhenConnected = { pendingCastMedia = it },
+            onDismiss = {
+                showCastRoutes = false
+                castRoutesMedia = null
+            },
+        )
     }
     if (showCastOptions || castMedia != null) {
         val media = castMedia
+        var useStream by remember { mutableStateOf(false) }
+        var streamMedia by remember { mutableStateOf<CastableMedia?>(null) }
+        var resolvingStream by remember { mutableStateOf(false) }
+        // The media the cast targets actually use: original, or the transcoded copy if chosen.
+        val effectiveMedia = if (useStream) streamMedia else media
+        // Stream chosen but its URL isn't ready yet — block casting until it resolves.
+        val streamPending = useStream && streamMedia == null
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = {
@@ -745,14 +791,50 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
                     )
                 }
+                // Source picker: cast the original file, or a lower-bitrate Real-Debrid
+                // transcode that buffers far less (handy for big 4K files).
+                if (media?.sourceId != null && media.kind == CastMediaKind.Video) {
+                    val selectOriginal = { useStream = false }
+                    val selectStream = {
+                        useStream = true
+                        if (streamMedia == null && !resolvingStream) {
+                            resolvingStream = true
+                            vm.resolveStream(media) { resolved ->
+                                streamMedia = resolved
+                                resolvingStream = false
+                                if (resolved == null) useStream = false
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (useStream) {
+                            DebbieOutlinedButton("Original", selectOriginal, Modifier.weight(1f))
+                            DebbieButton("Stream", selectStream, Modifier.weight(1f))
+                        } else {
+                            DebbieButton("Original", selectOriginal, Modifier.weight(1f))
+                            DebbieOutlinedButton("Stream", selectStream, Modifier.weight(1f))
+                        }
+                    }
+                    Text(
+                        when {
+                            resolvingStream -> "Preparing a lower-bitrate stream…"
+                            useStream -> "Transcoded copy — less buffering, lower quality."
+                            else -> "Original file — best quality, may buffer on 4K."
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+                    )
+                }
                 DebbieButton(
-                    "Chromecast",
+                    if (streamPending) "Preparing stream…" else "Chromecast",
                     {
                         showCastOptions = false
+                        castRoutesMedia = effectiveMedia
                         castMedia = null
                         showCastRoutes = true
                     },
                     Modifier.fillMaxWidth(),
+                    enabled = !streamPending,
                 )
                 DebbieOutlinedButton(
                     if (searchingDlna) "Searching DLNA" else "Find DLNA devices",
@@ -787,7 +869,7 @@ fun DetailScreen(back: () -> Unit, vm: DetailViewModel = hiltViewModel()) {
                     DebbieOutlinedButton(
                         dlnaDeviceLabel(device),
                         {
-                            val selectedMedia = media ?: return@DebbieOutlinedButton
+                            val selectedMedia = effectiveMedia ?: return@DebbieOutlinedButton
                             scope.launch {
                                 runCatching { castToDlnaDevice(device, selectedMedia) }
                                     .onSuccess { vm.showMessage(it) }
@@ -997,6 +1079,7 @@ fun DirectLinkActions(link: String, castableMedia: CastableMedia?, onCast: (Cast
     val iconTint = MaterialTheme.colorScheme.onSurface
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         castableMedia?.let { media ->
+            IconButton(onClick = { openInPlayer(context, media.url, media.contentType) }) { Icon(Icons.Outlined.PlayArrow, "Play", tint = iconTint) }
             IconButton(onClick = { onCast(media) }) { Icon(Icons.Outlined.Cast, "Cast", tint = iconTint) }
         }
         IconButton(onClick = { copyText(context, link) }) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = iconTint) }
@@ -1005,7 +1088,12 @@ fun DirectLinkActions(link: String, castableMedia: CastableMedia?, onCast: (Cast
 }
 
 @Composable
-fun CastRoutesSheet(onDismiss: () -> Unit) {
+fun CastRoutesSheet(
+    media: CastableMedia?,
+    onStatus: (String) -> Unit,
+    onCastWhenConnected: (CastableMedia) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
     val router = remember(context) { MediaRouter.getInstance(context.applicationContext) }
     val selector = remember(context) {
@@ -1069,6 +1157,19 @@ fun CastRoutesSheet(onDismiss: () -> Unit) {
                         selected = route.id == selectedRoute.id,
                         onClick = {
                             route.select()
+                            if (media != null) {
+                                val current = runCatching {
+                                    CastContext.getSharedInstance(context.applicationContext)
+                                        .sessionManager.currentCastSession
+                                }.getOrNull()
+                                // Already connected: load now. Otherwise hand the media to the
+                                // parent's session listener, which fires once connection completes.
+                                if (current != null && current.isConnected) {
+                                    onStatus(castToChromecast(context, media))
+                                } else {
+                                    onCastWhenConnected(media)
+                                }
+                            }
                             onDismiss()
                         },
                     )
@@ -1151,6 +1252,14 @@ fun copyText(context: Context, value: String) {
 
 fun openUrl(context: Context, url: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
+
+fun openInPlayer(context: Context, url: String, contentType: String) {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(Uri.parse(url), contentType)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(intent) }.onFailure { openUrl(context, url) }
 }
 
 @Composable

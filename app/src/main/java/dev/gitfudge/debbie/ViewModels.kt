@@ -247,6 +247,25 @@ class DetailViewModel @Inject constructor(
         state.value = state.value.copy(message = message)
     }
 
+    // Resolve a lower-bitrate transcoded version of the media for casting. Calls back with
+    // the rewritten media (same title, transcoded URL) or null if no stream is available.
+    fun resolveStream(media: CastableMedia, onResult: (CastableMedia?) -> Unit) = viewModelScope.launch {
+        val id = media.sourceId
+        if (id == null) {
+            onResult(null)
+            return@launch
+        }
+        runCatching { repository.streamLink(id) }
+            .onSuccess { link ->
+                if (link == null) state.value = state.value.copy(message = "No stream available for this file.")
+                onResult(link?.let { media.copy(url = it.url, contentType = it.contentType) })
+            }
+            .onFailure {
+                state.value = state.value.copy(message = it.message ?: "Could not get stream.")
+                onResult(null)
+            }
+    }
+
     fun delete(onDeleted: () -> Unit) = viewModelScope.launch {
         runCatching {
             repository.deleteTorrent(id)
